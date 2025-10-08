@@ -1,81 +1,66 @@
-<!doctype html>
+
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>SuzzyTech Project Cloner</title>
-  <link rel="stylesheet" href="/assets/styles.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SuzzyTech Project Cloner v2</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="hero">
-    <div class="container">
-      <h1>SuzzyTech <span class="accent">Project Cloner</span></h1>
-      <p class="subtitle">Clone & rebrand your WhatsApp bots and projects instantly. Upload a ZIP, set old→new name mappings, download the cloned project.</p>
-      <a class="cta" href="#uploader">Start Now</a>
-    </div>
-  </header>
+  <div class="container">
+    <h1>🚀 SuzzyTech Project Cloner v2</h1>
+    <p>Upload your WhatsApp bot ZIP, set your replacements, and download your cloned project instantly.</p>
 
-  <main class="container">
-    <section id="features" class="card-grid">
-      <div class="card">
-        <h3>Unlimited mappings</h3>
-        <p>Add as many old→new pairs as you want; the UI creates fields on demand.</p>
-      </div>
-      <div class="card">
-        <h3>Filename rename</h3>
-        <p>Optionally rename files and folders that contain old names.</p>
-      </div>
-      <div class="card">
-        <h3>Safe text-only edits</h3>
-        <p>Only common text extensions are edited; binaries are preserved.</p>
-      </div>
-      <div class="card">
-        <h3>Downloadable ZIP</h3>
-        <p>Receive a ready-to-deploy ZIP of the cloned project.</p>
-      </div>
-    </section>
+    <form id="uploadForm" enctype="multipart/form-data">
+      <label>Select ZIP File:</label>
+      <input type="file" name="zipFile" accept=".zip" required />
 
-    <section id="uploader" class="upload-card">
-      <h2>Upload your project ZIP</h2>
-      <form id="uploadForm" method="POST" action="/upload" enctype="multipart/form-data">
-        <label class="file">
-          <span>Select ZIP</span>
-          <input type="file" name="zipfile" accept=".zip" required />
-        </label>
-
-        <div id="mappings">
-          <label class="pair">Old name <input name="old" placeholder="Old name (e.g. BossLady)" /></label>
-          <label class="pair">New name <input name="_new" placeholder="New name (e.g. SuzzyCore)" /></label>
-        </div>
-        <button type="button" id="addPair" class="btn-outline">+ Add More Mappings</button>
-
-        <label class="checkbox"><input type="checkbox" name="renameFilenames" checked /> Also rename filenames & folders</label>
-        <label>Text file extensions (comma separated): <input name="textExts" value=".js,.json,.txt,.md,.html,.css,.py,.yaml,.yml" /></label>
-        <p><button class="btn-primary" type="submit">Clone Project</button></p>
-      </form>
-      <p class="note">Tip: use full exact names to avoid accidental broad replacements (e.g. replace <code>BossLady</code> instead of <code>app</code>).</p>
-    </section>
-
-    <section class="footer-card">
-      <p>Made with ❤️ by SuzzyTech — test on copies first.</p>
-    </section>
-  </main>
+      <div id="mappings"></div>
+      <button type="button" id="addMapping">+ Add Mapping</button>
+      <button type="submit" id="cloneBtn">Clone Project</button>
+    </form>
+    <div id="result"></div>
+  </div>
 
   <script>
-    // Dynamic mapping fields
-    const addBtn = document.getElementById('addPair');
-    const mappings = document.getElementById('mappings');
-    addBtn.addEventListener('click', () => {
-      const oldLabel = document.createElement('label');
-      oldLabel.className = 'pair';
-      oldLabel.innerHTML = 'Old name <input name="old" placeholder="Old name (e.g. BossLady)" />';
-      const newLabel = document.createElement('label');
-      newLabel.className = 'pair';
-      newLabel.innerHTML = 'New name <input name="_new" placeholder="New name (e.g. SuzzyCore)" />';
-      mappings.appendChild(oldLabel);
-      mappings.appendChild(newLabel);
-      window.scrollTo(0, document.body.scrollHeight);
-    });
+    const mappingsDiv = document.getElementById('mappings');
+    const addMapping = document.getElementById('addMapping');
+
+    function createMappingRow() {
+      const row = document.createElement('div');
+      row.classList.add('mapRow');
+      row.innerHTML = '<input placeholder="Old name" class="old" required /> → <input placeholder="New name" class="new" required />';
+      mappingsDiv.appendChild(row);
+    }
+
+    addMapping.onclick = createMappingRow;
+    for (let i = 0; i < 5; i++) createMappingRow();
+
+    document.getElementById('uploadForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const formData = new FormData();
+      formData.append('zipFile', e.target.zipFile.files[0]);
+      const mappings = Array.from(document.querySelectorAll('.mapRow')).map(r => ({
+        old: r.querySelector('.old').value,
+        new: r.querySelector('.new').value
+      })).filter(m => m.old && m.new);
+      formData.append('mappings', JSON.stringify(mappings));
+
+      document.getElementById('cloneBtn').innerText = 'Processing...';
+      const res = await fetch('/upload', { method: 'POST', body: formData });
+      if (res.ok) {
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'SuzzyTech_Modified_Bot.zip';
+        a.click();
+        document.getElementById('result').innerText = '✅ Successfully cloned!';
+      } else {
+        document.getElementById('result').innerText = '❌ Error cloning project.';
+      }
+      document.getElementById('cloneBtn').innerText = 'Clone Project';
+    };
   </script>
 </body>
 </html>
