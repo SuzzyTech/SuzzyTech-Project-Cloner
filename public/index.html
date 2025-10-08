@@ -1,0 +1,66 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SuzzyTech Project Cloner v2</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>🚀 SuzzyTech Project Cloner v2</h1>
+    <p>Upload your WhatsApp bot ZIP, set your replacements, and download your cloned project instantly.</p>
+
+    <form id="uploadForm" enctype="multipart/form-data">
+      <label>Select ZIP File:</label>
+      <input type="file" name="zipFile" accept=".zip" required />
+
+      <div id="mappings"></div>
+      <button type="button" id="addMapping">+ Add Mapping</button>
+      <button type="submit" id="cloneBtn">Clone Project</button>
+    </form>
+    <div id="result"></div>
+  </div>
+
+  <script>
+    const mappingsDiv = document.getElementById('mappings');
+    const addMapping = document.getElementById('addMapping');
+
+    function createMappingRow() {
+      const row = document.createElement('div');
+      row.classList.add('mapRow');
+      row.innerHTML = '<input placeholder="Old name" class="old" required /> → <input placeholder="New name" class="new" required />';
+      mappingsDiv.appendChild(row);
+    }
+
+    addMapping.onclick = createMappingRow;
+    for (let i = 0; i < 5; i++) createMappingRow();
+
+    document.getElementById('uploadForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const formData = new FormData();
+      formData.append('zipFile', e.target.zipFile.files[0]);
+      const mappings = Array.from(document.querySelectorAll('.mapRow')).map(r => ({
+        old: r.querySelector('.old').value,
+        new: r.querySelector('.new').value
+      })).filter(m => m.old && m.new);
+      formData.append('mappings', JSON.stringify(mappings));
+
+      document.getElementById('cloneBtn').innerText = 'Processing...';
+      const res = await fetch('/upload', { method: 'POST', body: formData });
+      if (res.ok) {
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'SuzzyTech_Modified_Bot.zip';
+        a.click();
+        document.getElementById('result').innerText = '✅ Successfully cloned!';
+      } else {
+        document.getElementById('result').innerText = '❌ Error cloning project.';
+      }
+      document.getElementById('cloneBtn').innerText = 'Clone Project';
+    };
+  </script>
+</body>
+</html>
