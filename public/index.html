@@ -1,0 +1,71 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>SuzzyTech Project Cloner</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial;margin:0;background:#0f172a;color:#e6eef8;display:flex;align-items:center;justify-content:center;height:100vh}
+    .card{width:920px;background:linear-gradient(135deg,#071025 0%, #0b1a34 100%);padding:28px;border-radius:12px;box-shadow:0 10px 30px rgba(2,6,23,0.6)}
+    h1{margin:0 0 12px 0;font-size:24px}
+    textarea{width:100%;height:120px;padding:10px;border-radius:8px;border:1px solid #123;background:rgba(255,255,255,0.02);color:#e6eef8}
+    input[type=file]{display:block;margin:10px 0}
+    .row{display:flex;gap:10px;margin-top:12px}
+    button{background:#06b6d4;border:none;padding:10px 14px;border-radius:8px;color:#042031;cursor:pointer;font-weight:700}
+    small{display:block;margin-top:8px;color:#94a3b8}
+    .note{font-size:13px;color:#9fb7d1}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>SuzzyTech Project Cloner</h1>
+    <p class="note">Upload your bot ZIP and provide mappings as JSON. Example mappings:<br>
+    <code>[{"old":"BossLady","_new":"SuzzyCore"},{"old":"XMD","_new":"X"}]</code></p>
+    <form id="frm">
+      <input type="file" name="zipFile" id="zipFile" accept=".zip" required />
+      <textarea id="mappings" placeholder='[{"old":"BossLady","_new":"SuzzyCore"}]'></textarea>
+      <div class="row">
+        <button id="btnRender" type="button">Clone (Render)</button>
+        <button id="btnVercel" type="button">Clone (Vercel)</button>
+        <button id="btnPreview" type="button">Preview Mappings</button>
+      </div>
+      <small>After cloning, download will start automatically.</small>
+    </form>
+    <div id="log"></div>
+  </div>
+
+<script>
+const frm=document.getElementById('frm');
+const log=document.getElementById('log');
+function show(msg){ log.innerText=msg; }
+async function sendTo(url){
+  const file = document.getElementById('zipFile').files[0];
+  if(!file){ show('Please choose a zip file'); return; }
+  let mappings = document.getElementById('mappings').value || '[]';
+  try{ JSON.parse(mappings); }catch(e){ show('Mappings must be valid JSON'); return; }
+  const fd = new FormData();
+  fd.append('zipFile', file);
+  fd.append('mappings', mappings);
+  show('Uploading...');
+  const resp = await fetch(url, { method:'POST', body: fd });
+  if(!resp.ok){ show('Error: '+resp.statusText); return; }
+  const blob = await resp.blob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'cloned.zip';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  show('Download started');
+}
+document.getElementById('btnRender').onclick = ()=> sendTo('/clone');
+document.getElementById('btnVercel').onclick = ()=> sendTo('/api/clone');
+document.getElementById('btnPreview').onclick = ()=>{
+  try{
+    const m = JSON.parse(document.getElementById('mappings').value || '[]');
+    show('Mappings valid: '+JSON.stringify(m));
+  }catch(e){ show('Invalid JSON'); }
+};
+</script>
+</body>
+</html>

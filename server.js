@@ -1,82 +1,104 @@
-
-import express from "express";
-import fileUpload from "express-fileupload";
-import fs from "fs-extra";
-import path from "path";
-import AdmZip from "adm-zip";
-import archiver from "archiver";
+// server.js - Render-ready server using multer and replacer
+const express = require('express');
+const multer = require('multer');
+const AdmZip = require('adm-zip');
+const fs = require('fs-extra');
+const path = require('path');
+const os = require('os');
+const { v4: uuidv4 } = require('uuid');
+const { replaceUsingSkeleton } = require('./replacer');
 
 const app = express();
-app.use(fileUpload());
-app.use(express.static("public"));
-app.use(express.json());
+const upload = multer({ dest: os.tmpdir() });
+
 app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
 
-// Replace text safely (handles overlapping names by sorting by length)
-const replaceInText = (text, mappings) => {
-  mappings.sort((a, b) => b.old.length - a.old.length);
-  for (const { old, new: newVal } of mappings) {
-    if (!old || !newVal) continue;
-    const safeOld = old.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(safeOld, 'g');
-    text = text.replace(regex, newVal);
-  }
-  return text;
-};
+// Upload endpoint
+app.post('/clone', upload.single('zipFile'), async (req, res) => {
+  try {
+    const mappings = JSON.parse(req.body.mappings || '[]');
+    const renameFiles = req.body.renameFiles === 'true' || req.body.renameFiles === true;
+    if (!req.file) return res.status(400).send('No zip uploaded');
 
-app.post("/upload", async (req, res) => {
-  if (!req.files || !req.files.zipFile) return res.status(400).send("No file uploaded");
+    const jobId = uuidv4();
+    const workDir = path.join(os.tmpdir(), `suzzycloner-${jobId}`);
+    await fs.ensureDir(workDir);
 
-  const zipFile = req.files.zipFile;
-  const mappings = JSON.parse(req.body.mappings || "[]");
-  const tempDir = path.join("uploads", Date.now().toString());
-  await fs.ensureDir(tempDir);
+    const zip = new AdmZip(req.file.path);
+    zip.extractAllTo(workDir, true);
 
-  const zipPath = path.join(tempDir, zipFile.name);
-  await zipFile.mv(zipPath);
-
-  const zip = new AdmZip(zipPath);
-  zip.extractAllTo(tempDir, true);
-
-  const processDir = async (dir) => {
-    const files = await fs.readdir(dir);
-    for (const file of files) {
-      const fullPath = path.join(dir, file);
-      const stat = await fs.stat(fullPath);
-
-      if (stat.isDirectory()) {
-        await processDir(fullPath);
-      } else {
-        const ext = path.extname(fullPath).toLowerCase();
-        const textFileTypes = [".js", ".json", ".txt", ".html", ".yml", ".env", ".md", ".ts", ".py", ".jsx", ".tsx"];
-        if (textFileTypes.includes(ext)) {
-          let content = await fs.readFile(fullPath, "utf8");
-          content = replaceInText(content, mappings);
-          await fs.writeFile(fullPath, content, "utf8");
+    // process text files
+    const walk = (dir) => {
+      for (const f of fs.readdirSync(dir)) {
+        const full = path.join(dir, f);
+        const stat = fs.statSync(full);
+        if (stat.isDirectory()) { walk(full); }
+        else {
+          const ext = path.extname(full).toLowerCase();
+          const textExts = ['.js','.ts','.json','.md','.html','.css','.env','.txt','.py','.java'];
+          if (textExts.includes(ext) || ext === '') {
+            let data = fs.readFileSync(full, 'utf8');
+            for (const m of mappings) {
+              data = replaceUsingSkeleton(data, m.old || m.oldName || m.oldname || m.from, m._new || m.new || m.newName || m.to);
+            }
+            fs.writeFileSync(full, data, 'utf8');
+          }
         }
-        // Rename files if old name appears in filename
-        let newName = file;
-        for (const { old, new: newVal } of mappings.sort((a, b) => b.old.length - a.old.length)) {
-          const safeOld = old.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          newName = newName.replace(new RegExp(safeOld, 'g'), newVal);
+      }
+    };
+    walk(workDir);
+
+    // optional rename files/dirs
+    if (renameFiles) {
+      const allPaths = [];
+      const rec = (p) => {
+        allPaths.push(p);
+        if (fs.statSync(p).isDirectory()) {
+          for (const c of fs.readdirSync(p)) rec(path.join(p,c));
         }
-        if (newName !== file) {
-          await fs.rename(fullPath, path.join(dir, newName));
+      };
+      rec(workDir);
+      allPaths.sort((a,b)=>b.split(path.sep).length - a.split(path.sep).length);
+      for (const p of allPaths) {
+        const rel = path.relative(workDir, p);
+        let newRel = rel;
+        for (const m of mappings) {
+          newRel = replaceUsingSkeleton(newRel, m.old || m.oldName || m.from, m._new || m.new || m.to);
+        }
+        if (newRel !== rel) {
+          const dest = path.join(workDir, newRel);
+          await fs.ensureDir(path.dirname(dest));
+          try { await fs.move(p, dest, { overwrite: true }); } catch(e){ console.warn('rename failed', e.message); }
         }
       }
     }
-  };
 
-  await processDir(tempDir);
+    const outZip = new AdmZip();
+    outZip.addLocalFolder(workDir);
+    const outName = `SuzzyCloned-${jobId}.zip`;
+    const outPath = path.join(os.tmpdir(), outName);
+    outZip.writeZip(outPath);
 
-  const outputZip = path.join(tempDir, "ModifiedProject.zip");
-  const output = fs.createWriteStream(outputZip);
-  const archive = archiver("zip");
-  archive.pipe(output);
-  archive.directory(tempDir, false);
-  await archive.finalize();
+    // cleanup upload
+    try { fs.unlinkSync(req.file.path); } catch(e){}
+    // send file
+    res.download(outPath, outName, (err) => {
+      try { fs.removeSync(workDir); } catch(e){}
+      try { fs.unlinkSync(outPath); } catch(e){}
+    });
 
-  res.download(outputZip, "SuzzyTech_Modified_Bot.zip");
+  } catch (err) {
+    console.error(err);
+    res.status(500).send(String(err));
+  }
 });
 
-app.listen(3000, () => console.log("🚀 SuzzyTech Project Cloner v2 running on http://localhost:3000"));
+// fallback to index
+app.get('*', (req,res)=> {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, ()=> console.log('Server running on port', PORT));

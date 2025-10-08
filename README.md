@@ -1,20 +1,15 @@
-# SuzzyTech Project Cloner
+SuzzyTech Project Cloner - Render & Vercel Ready
 
-Quickstart:
-1. Install Node.js (v14+ recommended).
-2. In the project folder run:
-   ```
-   npm install
-   node server.js
-   ```
-3. Open http://localhost:3000 in your browser.
+This package is prepared to deploy:
 
-What it does:
-- Upload a ZIP of your bot/project.
-- Provide unlimited old→new mappings (UI adds more fields automatically).
-- Replaces occurrences in text files and optionally renames filenames.
-- Returns a new ZIP you can download.
+- Render: Upload the ZIP and use `node server.js` as start command. The server exposes `/clone` for POST uploads and serves the UI from `/public/index.html`.
 
-Security notes:
-- Always test on copies of your project.
-- Consider adding authentication and sandboxing for production.
+- Vercel: Deploy the root to Vercel. The static site is in `/public` and the serverless endpoint is `/api/clone` (uses busboy).
+
+Usage (client):
+- Use the UI at `/` to upload a ZIP and mappings.
+- Mappings must be JSON array: [{"old":"BossLady","_new":"SuzzyCore"}]
+
+Notes:
+- The replacer supports many Unicode/"fancy" alphabets (Mathematical Alphanumeric, Fullwidth, Circled, diacritics).
+- For large projects deploy on Render (serverful) for best performance. Vercel function has execution time limits.
